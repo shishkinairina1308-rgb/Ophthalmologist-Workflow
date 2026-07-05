@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/LLergibt/Ophthalmologist-Workflow/internal/config"
@@ -11,6 +10,7 @@ import (
 	"github.com/LLergibt/Ophthalmologist-Workflow/internal/repository/postgres"
 	"github.com/LLergibt/Ophthalmologist-Workflow/internal/service"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
@@ -46,20 +46,33 @@ func main() {
 
 	r := gin.Default()
 
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+	// ==========================================
+
+	// Публичные маршруты (теперь защищены CORS)
 	r.POST("/api/auth/register", authHandler.Register)
 	r.POST("/api/auth/login", authHandler.Login)
 
+	// Защищенные маршруты
 	protected := r.Group("/api")
 	protected.Use(handler.AuthMiddleware(cfg.JWTSecret))
 	{
-		protected.GET("/patients", func(c *gin.Context) {
-			role, _ := c.Get("userRole")
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Welcome to patient dashboard",
-				"your_role": role,
-				"data": []string{"Пациент Иванов: Миопия (-3.5)", "Пациент Петров: Здоров"},
-			})
-		})
+		patientHandler := &handler.PatientHandler{DB: db}
+
+		protected.GET("/patients", patientHandler.ListPatients)
+		protected.POST("/patients", patientHandler.CreatePatient)
+		protected.GET("/patients/:id", patientHandler.GetPatientProfile)
+
+		protected.POST("/patients/:id/records", patientHandler.CreateRecord)
+
+		protected.GET("/templates", patientHandler.GetTemplates)
+		protected.POST("/templates", patientHandler.CreateTemplate)
 	}
 
 	log.Printf("Server starting on port %s", cfg.Port)
