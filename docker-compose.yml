@@ -1,10 +1,34 @@
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: ophthalmology_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ophthalmology"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   backend:
     build:
       context: ./backend
-    container_name: ophthalmology-backend
+    container_name: ophthalmology_api
     ports:
-      - "8080:8080"
+      - "${PORT}:${PORT}"
+    environment:
+      PORT: ${PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
 
   frontend:
     build:
@@ -16,3 +40,6 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8080
     depends_on:
       - backend
+
+volumes:
+  postgres_data:
